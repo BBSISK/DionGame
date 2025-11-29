@@ -2,7 +2,18 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { generateDinoData, generateDinoImage } from './services/gemini';
 import { DinoQuestion, GameState, AppStatus } from './types';
 import { Spinner } from './components/Spinner';
-import { Trophy, XCircle, CheckCircle2, AlertTriangle, ArrowRight, Dna, Loader2, Sparkles } from 'lucide-react';
+import { Confetti } from './components/Confetti';
+import { Trophy, XCircle, CheckCircle2, AlertTriangle, ArrowRight, Dna, Loader2, Sparkles, Medal, Keyboard } from 'lucide-react';
+
+// Rank definitions
+const RANKS = [
+  { threshold: 0, title: "Lab Intern" },
+  { threshold: 5, title: "Field Researcher" },
+  { threshold: 10, title: "Park Ranger" },
+  { threshold: 20, title: "Lead Paleontologist" },
+  { threshold: 35, title: "Dino Whisperer" },
+  { threshold: 50, title: "Time Traveler" }
+];
 
 const App: React.FC = () => {
   const [status, setStatus] = useState<AppStatus>(AppStatus.IDLE);
@@ -14,6 +25,7 @@ const App: React.FC = () => {
   // New state for transition management
   const [isLoadingNext, setIsLoadingNext] = useState(false);
   const [nextReady, setNextReady] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
   
   const [stats, setStats] = useState<GameState>({
     correct: 0,
@@ -61,8 +73,9 @@ const App: React.FC = () => {
       setIsLoadingNext(true);
     }
     
-    // Clear selection but keep data/image visible if not initial
+    // Clear selection and effects
     setSelectedOption(null);
+    setShowConfetti(false);
 
     try {
       // Ensure we have a promise to wait on
@@ -114,7 +127,7 @@ const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleAnswer = (answer: string) => {
+  const handleAnswer = useCallback((answer: string) => {
     if (status !== AppStatus.READY_TO_ANSWER) return;
 
     setSelectedOption(answer);
@@ -122,30 +135,67 @@ const App: React.FC = () => {
 
     const isCorrect = answer === questionData?.correctName;
 
+    if (isCorrect) {
+      setShowConfetti(true);
+    }
+
     setStats(prev => ({
       correct: prev.correct + (isCorrect ? 1 : 0),
       incorrect: prev.incorrect + (isCorrect ? 0 : 1),
       streak: isCorrect ? prev.streak + 1 : 0
     }));
-  };
+  }, [status, questionData]);
+
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const key = e.key;
+      
+      if (status === AppStatus.READY_TO_ANSWER) {
+        // Map 1-4 to indices 0-3
+        if (['1', '2', '3', '4'].includes(key)) {
+          const index = parseInt(key) - 1;
+          if (shuffledOptions[index]) {
+            handleAnswer(shuffledOptions[index]);
+          }
+        }
+      }
+
+      // Enter key for "Next Question"
+      if (e.key === 'Enter' && status === AppStatus.ANSWERED && !isLoadingNext) {
+        loadNewQuestion(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [status, shuffledOptions, handleAnswer, isLoadingNext, loadNewQuestion]);
 
   const isCorrect = selectedOption === questionData?.correctName;
 
+  // Calculate Rank
+  const currentRank = [...RANKS].reverse().find(r => stats.correct >= r.threshold) || RANKS[0];
+
   return (
     <div className="min-h-screen flex flex-col items-center p-4 md:p-8 font-sans">
+      {showConfetti && <Confetti />}
+
       {/* Header */}
-      <header className="w-full max-w-4xl flex justify-between items-center mb-8 bg-dino-card p-4 rounded-xl border border-slate-700 shadow-lg">
-        <div className="flex items-center gap-3">
+      <header className="w-full max-w-4xl flex flex-col md:flex-row justify-between items-center mb-8 bg-dino-card p-4 rounded-xl border border-slate-700 shadow-lg gap-4">
+        <div className="flex items-center gap-3 w-full md:w-auto">
           <div className="bg-dino-accent/20 p-2 rounded-lg">
             <Dna className="w-8 h-8 text-dino-accent" />
           </div>
           <div>
             <h1 className="text-xl font-bold tracking-tight text-white">DinoGen</h1>
-            <p className="text-xs text-slate-400">Paleontology Division</p>
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+               <Medal className="w-3 h-3 text-amber-400" />
+               <span className="uppercase tracking-wider text-amber-400 font-bold">{currentRank.title}</span>
+            </div>
           </div>
         </div>
 
-        <div className="flex gap-6 text-sm font-medium">
+        <div className="flex gap-6 text-sm font-medium w-full md:w-auto justify-around md:justify-end">
             <div className="flex flex-col items-center">
                 <span className="text-slate-400 text-xs uppercase tracking-wider">Streak</span>
                 <span className="text-amber-400 flex items-center gap-1">
@@ -188,7 +238,7 @@ const App: React.FC = () => {
 
         {/* Display Content if Ready, Answered, or Loading Next (keep old content visible) */}
         {(status === AppStatus.READY_TO_ANSWER || status === AppStatus.ANSWERED || (isLoadingNext && questionData)) && questionData && (
-          <div className="flex flex-col gap-6 animate-fade-in">
+          <div className="flex flex-col gap-6 animate-fade-in pb-8">
             {/* Image Card */}
             <div className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-slate-700 group">
               {imageUrl ? (
@@ -214,8 +264,13 @@ const App: React.FC = () => {
             </h2>
 
             {/* Options Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {shuffledOptions.map((option) => {
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative">
+              {/* Keyboard helper text */}
+              <div className="hidden md:block absolute -right-24 top-0 text-slate-600 text-xs">
+                 <div className="flex items-center gap-1 mb-2"><Keyboard className="w-3 h-3"/> Shortcuts</div>
+              </div>
+
+              {shuffledOptions.map((option, idx) => {
                 let btnStyle = "bg-dino-card border-slate-700 hover:border-dino-accent hover:bg-slate-800";
                 
                 if (status === AppStatus.ANSWERED || isLoadingNext) {
@@ -233,9 +288,14 @@ const App: React.FC = () => {
                         key={option}
                         onClick={() => handleAnswer(option)}
                         disabled={status !== AppStatus.READY_TO_ANSWER}
-                        className={`p-4 rounded-xl border-2 text-lg font-medium transition-all duration-200 text-left flex justify-between items-center ${btnStyle}`}
+                        className={`group relative p-4 rounded-xl border-2 text-lg font-medium transition-all duration-200 text-left flex justify-between items-center ${btnStyle}`}
                     >
-                        <span>{option}</span>
+                        <div className="flex items-center gap-3">
+                           <span className="hidden md:flex w-6 h-6 rounded bg-slate-800 text-slate-500 text-xs items-center justify-center border border-slate-700 group-hover:border-dino-accent group-hover:text-dino-accent transition-colors">
+                              {idx + 1}
+                           </span>
+                           <span>{option}</span>
+                        </div>
                         {(status === AppStatus.ANSWERED || isLoadingNext) && option === questionData.correctName && (
                             <CheckCircle2 className="w-5 h-5 text-emerald-400" />
                         )}
@@ -285,6 +345,9 @@ const App: React.FC = () => {
                                 </>
                             )}
                         </button>
+                    </div>
+                    <div className="mt-2 text-center md:text-right text-xs text-slate-500">
+                        Press <kbd className="bg-slate-700 px-1 rounded">Enter</kbd> to continue
                     </div>
                 </div>
             )}
