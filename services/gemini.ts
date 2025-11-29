@@ -8,11 +8,36 @@ const TEXT_MODEL = "gemini-2.5-flash";
 // Using gemini-2.5-flash-image for image generation as per requirements
 const IMAGE_MODEL = "gemini-2.5-flash-image";
 
+const DINO_CATEGORIES = [
+  "Sauropod (long-necked herbivore)",
+  "Ceratopsian (horned dinosaur)",
+  "Ankylosaur or Nodosaur (armored dinosaur)",
+  "Stegosaur (plated dinosaur)",
+  "Hadrosaur or Iguanodontian (ornithopod)",
+  "Small to medium Theropod (raptor or similar)",
+  "Large Theropod (carnivore, excluding Spinosaurus/T-Rex)",
+  "Pachycephalosaur (dome-headed)",
+  "Abelisaurid (short-armed carnivore)",
+  "Dinosaur from the Triassic period",
+  "Dinosaur from the Early Jurassic period"
+];
+
 export const generateDinoData = async (): Promise<DinoQuestion> => {
+  // Select a random category to force variety
+  const category = DINO_CATEGORIES[Math.floor(Math.random() * DINO_CATEGORIES.length)];
+
   const prompt = `
     Generate a dinosaur trivia question suitable for a 14-year-old.
-    Pick a random dinosaur (it can be popular or slightly obscure but scientifically recognized).
-    Provide the correct name, 3 plausible but incorrect dinosaur names (distractors), a short interesting fact, and a detailed visual description suitable for generating a photorealistic image of it.
+    
+    Target Category: ${category}.
+    
+    Task:
+    1. Pick a random dinosaur that fits the target category.
+    2. IMPORTANT: Do NOT use Spinosaurus, Tyrannosaurus Rex, Triceratops, or Velociraptor. We want to see variety (e.g., Carnotaurus, Parasaurolophus, Ankylosaurus, Baryonyx, Diplodocus, etc.).
+    3. Provide the correct name.
+    4. Provide 3 plausible but incorrect dinosaur names (distractors) that sound similar or are from the same era.
+    5. Provide a short interesting fact.
+    6. Provide a detailed visual description suitable for generating a photorealistic image.
   `;
 
   const response = await ai.models.generateContent({
